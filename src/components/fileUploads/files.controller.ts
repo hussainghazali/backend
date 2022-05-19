@@ -1,65 +1,17 @@
-import {
-    Controller,
-    Get,
-    Post,
-    UseInterceptors,
-    UploadedFile,
-    UploadedFiles,
-    Res,
-    Param,
-  } from '@nestjs/common';
-  import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-  import { diskStorage } from 'multer';
-  import { editFileName, imageFileFilter } from './utils/files.utils';
+import { Controller, Post, Req, Res } from '@nestjs/common';
+import { ImageUploadService } from './files.service';
+import { request } from 'https';
 
-  
-  @Controller('files')
-  export class FilesController {
-    fileService: any;
-    @Post('upload')
-    @UseInterceptors(
-      FileInterceptor('image', {
-        storage: diskStorage({
-          destination: './files',
-          filename: editFileName,
-        }),
-        fileFilter: imageFileFilter,
-      }),
-    )
-    async uploadedFile(@UploadedFile() file) {
-      const response = {
-        originalname: file.originalname,
-        filename: file.filename,
-      };
-      return response;
-    }
-  
-    @Post('upload/multiple')
-    @UseInterceptors(
-      FilesInterceptor('image', 100, {
-        storage: diskStorage({
-          destination: './files',
-          filename: editFileName,
-        }),
-        fileFilter: imageFileFilter,
-      }),
-    )
-    async uploadMultipleFiles(@UploadedFiles() files) {
-      const response = [];
-      files.forEach(file => {
-        const fileReponse = {
-          originalname: file.originalname,
-          filename: file.filename,
-        };
-        response.push(fileReponse);
-      });
-      return response;
-    }
-  
-    @Get(':imgpath')
-    seeUploadedFile(@Param('imgpath') image, @Res() res) {
-      return res.sendFile(image, { root: './files' });
-    }
+@Controller('fileUpload')
+export class ImageUploadController {
+    constructor(private readonly imageUploadService: ImageUploadService) {}
 
+    @Post()
+    async create(@Req() request, @Res() response) {
+        try {
+            await this.imageUploadService.fileupload(request, response);
+        } catch (error) {
+            return response.status(500).json(`Failed to upload image file: ${error.message}`);
+        }
+    }
 }
-    
