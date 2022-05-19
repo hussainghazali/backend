@@ -1,23 +1,170 @@
-import {Injectable} from '@nestjs/common';
-import {InjectRepository} from "@nestjs/typeorm";
-import {User} from "./user.entity";
-import {Repository} from "typeorm";
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { RegistrationReqModel } from './models/registration.req.model';
+import { RegistrationRespModel } from './models/registration.resp.model';
+import { MoreThanOrEqual, Repository } from 'typeorm';
+import { User } from './user.entity';
+import * as bcrypt from 'bcrypt';
+import { JwtService } from '@nestjs/jwt';
+import { CurrentUser } from './models/current.user';
+import * as randomToken from 'rand-token';
+import * as moment from 'moment';
+import { UpdateUser } from './models/update.user';
 
 @Injectable()
 export class UsersService {
-  validateUserCredentials(pNumber: string, password: string) {
-    throw new Error('Method not implemented.');
-  }
   constructor(
     @InjectRepository(User) private user: Repository<User>,
+    private jwtService: JwtService,
   ) {}
 
-  async create(data: any): Promise<User> {
-    return this.user.save(data);
+  private async registrationValidation(
+    regModel: RegistrationReqModel,
+  ): Promise<string> {
+    if (!regModel.email) {
+      return "Email can't be empty";
+    }
+
+    const emailRule =
+      /^(([^<>()[\]\.,;:\s@\"]+(\.[^<>()[\]\.,;:\s@\"]+)*)|(\".+\"))@(([^<>()[\]\.,;:\s@\"]+\.)+[^<>()[\]\.,;:\s@\"]{2,})$/i;
+    if (!emailRule.test(regModel.email.toLowerCase())) {
+      return 'Invalid email';
+    }
+
+    const user = await this.user.findOne({ email: regModel.email });
+    if (user != null && user.email) {
+      return 'Email already exist';
+    }
+
+    if (regModel.password !== regModel.confirmPassword) {
+      return 'Confirm password not matching';
+    }
+    return '';
+  }
+
+  private async getPasswordHash(password: string): Promise<string> {
+    const hash = await bcrypt.hash(password, 10);
+    return hash;
+  }
+
+  public async registerUser(
+    regModel: RegistrationReqModel,
+  ): Promise<RegistrationRespModel> {
+    let result = new RegistrationRespModel();
+
+    const errorMessage = await this.registrationValidation(regModel);
+    if (errorMessage) {
+      result.message = errorMessage;
+      result.successStatus = false;
+
+      return result;
+    }
+
+    let newUser = new User();
+    newUser.firstName = regModel.firstName;
+    newUser.lastName = regModel.lastName;
+    newUser.email = regModel.email;
+    newUser.password = await this.getPasswordHash(regModel.password);
+
+    await this.user.insert(newUser);
+    result.successStatus = true;
+    result.message = 'succeess';
+    return result;
+  }
+
+  public async validateUserCredentials(
+    email: string,
+    password: string,
+  ): Promise<CurrentUser> {
+    let user = await this.user.findOne({ email: email });
+
+    if (user == null) {
+      return null;
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return null;
+    }
+
+    let currentUser = new CurrentUser();
+    currentUser.userId = user.userId;
+    currentUser.firstName = user.firstName;
+    currentUser.lastName = user.lastName;
+    currentUser.email = user.email;
+
+    return currentUser;
+  }
+
+  public async getJwtToken(user: CurrentUser): Promise<string> {
+    const payload = {
+      ...user,
+    };
+    return this.jwtService.signAsync(payload);
+  }
+
+  public async getRefreshToken(userId: number): Promise<string> {
+    const userDataToUpdate = {
+      refreshToken: randomToken.generate(16),
+      refreshTokenExp: moment().day(1).format('YYYY/MM/DD'),
+    };
+
+    await this.user.update(userId, userDataToUpdate);
+    return userDataToUpdate.refreshToken;
+  }
+
+  public async validRefreshToken(
+    email: string,
+    refreshToken: string,
+  ): Promise<CurrentUser> {
+    const currentDate = moment().day(1).format('YYYY/MM/DD');
+    let user = await this.user.findOne({
+      where: {
+        email: email,
+        refreshToken: refreshToken,
+        refreshTokenExp: MoreThanOrEqual(currentDate),
+      },
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    let currentUser = new CurrentUser();
+    currentUser.userId = user.userId;
+    currentUser.firstName = user.firstName;
+    currentUser.lastName = user.lastName;
+    currentUser.email = user.email;
+
+    return currentUser;
+  }
+
+  public async getUsersById(userId: number): Promise<User> {
+    let users = await this.user.findOne(userId);
+    if (!users) {
+      throw new NotFoundException('User not found from DMC Database');
+    }
+    return users;
+  }
+
+  async updateUser(oldUser: CurrentUser, updated_values: UpdateUser): Promise<User> {
+    const updatedUser = oldUser;
+    Object.keys(updated_values).forEach((key) => {
+      updatedUser[key] = updated_values[key];
+    });
+    try {
+      return await this.user.save(updatedUser);
+    } catch (err) {
+      return err;
+    }
 }
 
-async findOne(condition: any): Promise<User> {
-    return this.user.findOne(condition);
+public async getUsers(): Promise<User[]> {
+  return await this.user.find();
 }
+
+  public async deleteUser(userId: number): Promise<void> {
+    await this.user.delete(userId);
+  }
 
 }

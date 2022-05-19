@@ -1,16 +1,25 @@
-import {Column, Entity, PrimaryGeneratedColumn} from "typeorm";
+import { Column, Entity, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 
-@Entity('users')
+@Entity({name:'users'})
 export class User {
-    @PrimaryGeneratedColumn()
-    id: number;
+  @PrimaryGeneratedColumn('increment',{name:'userid'})
+  userId: number;
 
-    @Column()
-    name: string;
+  @Column({name:'firstname'})
+  firstName: string;
 
-    @Column({unique: true})
-    email: string;
+  @Column({name:'lastname'})
+  lastName: string;
 
-    @Column()
-    password: string;
+  @Column({name:'email'})
+  email: string;
+
+  @Column()
+  password: string;
+
+  @Column({ nullable: true,name:'refreshtoken' })
+  refreshToken: string;
+
+  @Column({ type: 'date', nullable: true, name:'refreshtokenexp' })
+  refreshTokenExp: string;
 }
