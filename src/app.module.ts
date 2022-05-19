@@ -3,12 +3,13 @@ import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { User } from './components/users/user.entity';
-import { UsersModule } from './components/users/users.module';
+import { User } from './components/staywoLogin/user.entity';
+import { UsersModule } from './components/staywoLogin/users.module';
 import { FilesModule } from './components/fileUploads/files.module';
 import { HttpErrorFilter } from './logs/http-error.filter';
 import { LoggingInterceptor } from './logs/logging.interceptor';
-
+import { GoogleModule } from './components/googleLogin/google.module';
+import { FacebookModule } from './components/facebookLogin/facebook.module';
 
 
 // code hidden for display purpose
@@ -25,6 +26,8 @@ import { LoggingInterceptor } from './logs/logging.interceptor';
     }),
     UsersModule,
     FilesModule,
+    GoogleModule,
+    FacebookModule,
   ],
   controllers:[AppController],
   providers: [AppService, {
