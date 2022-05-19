@@ -1,108 +1,85 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Post,
-  Put,
-  Req,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-import { Response } from 'express';
-import { CurrentUser } from '../users/models/current.user';
-import { RegistrationReqModel } from '../users/models/registration.req.model';
-import { UpdateUser } from './models/update.user';
-import { User } from './user';
-import { UsersService } from './users.service';
+import {BadRequestException, Body, Controller, Get, Post, Req, Res, UnauthorizedException} from '@nestjs/common';
+import {UsersService} from './users.service';
+import * as bcrypt from 'bcrypt';
+import {JwtService} from "@nestjs/jwt";
+import {Response, Request} from 'express';
 
 @Controller('users')
 export class UsersController {
-  constructor(private userService: UsersService) {}
+  constructor(private userService: UsersService,
+    private jwtService: JwtService) {}
+  @Post('register')
+  async register(
+      @Body('name') name: string,
+      @Body('email') email: string,
+      @Body('password') password: string
+  ) {
+      const hashedPassword = await bcrypt.hash(password, 12);
 
-  @Post('registration')
-  async registerUser(@Body() reg: RegistrationReqModel) {
-    return await this.userService.registerUser(reg);
+      const user = await this.userService.create({
+          name,
+          email,
+          password: hashedPassword
+      });
+
+      delete user.password;
+
+      return user;
   }
 
   @Post('login')
-  @UseGuards(AuthGuard('local'))
-  async login(@Req() req, @Res({ passthrough: true }) res: Response) {
-
-    const token = await this.userService.getJwtToken(req.user as CurrentUser);
-    const refreshToken = await this.userService.getRefreshToken(
-      req.user.userId,
-    );
-    const user = await this.userService.getUsersBypNumber(req.body.pNumber);
-    const secretData = {
-      token,
-      refreshToken,
-      user,
-    };
-
-    res.cookie('auth-cookie', refreshToken, { httpOnly: true } );
-    return  {...secretData, msg:'You have been logged in successfully'};
-  }
-
-  @Get('check')
-  @UseGuards(AuthGuard('jwt'))
-  async movies(@Req() req) {
-    return ['Hussain', 'Uzair'];
-  }
-
-  @Get('refresh-tokens') 
-  async regenerateTokens(
-    @Req() req,
-    @Res({ passthrough: true }) res: Response,
+  async login(
+      @Body('email') email: string,
+      @Body('password') password: string,
+      @Res({passthrough: true}) response: Response
   ) {
-    const user = await this.userService.getUsersByCookies(req.headers.cookies);
-    const token = await this.userService.getJwtToken(req.user as CurrentUser);
-     const secretData = {
-       token,
-       user,
-     };
+      const user = await this.userService.findOne({email});
 
-     return  {...secretData, msg:'Refresh Token has been issued successfully'};
+      if (!user) {
+          throw new BadRequestException('invalid credentials');
+      }
+
+      if (!await bcrypt.compare(password, user.password)) {
+          throw new BadRequestException('invalid credentials');
+      }
+
+      const jwt = await this.jwtService.signAsync({id: user.id});
+
+      response.cookie('jwt', jwt, {httpOnly: true});
+
+      return {
+          message: 'success'
+      };
   }
 
+  @Get('user')
+  async user(@Req() request: Request) {
+      try {
+          const cookie = request.cookies['jwt'];
 
-  @Get('list')
-  @UseGuards(AuthGuard('jwt'))
-  public async getUsers(): Promise<User[]> {
-    let users = await this.userService.getUsers();
-    return users;
-  }
+          const data = await this.jwtService.verifyAsync(cookie);
 
-  @Get('list/:pNumber')
-  @UseGuards(AuthGuard('jwt'))
-  public async getUsersBypNumber(@Param('pNumber') pNumber: string) {
-    let users = await this.userService.getUsersBypNumber(pNumber);
-    return users;
-  }
+          if (!data) {
+              throw new UnauthorizedException();
+          }
 
-  @Put('update/:userId')
-  @UseGuards(AuthGuard('jwt'))
-  async updateUser(@Body() updatedUser: UpdateUser, @Param('userId') userId: number): Promise<User> {
-    const oldUser = await this.userService.getUsersById(userId);
-    return await this.userService.updateUser(oldUser, updatedUser);
-  }
+          const user = await this.userService.findOne({id: data['id']});
 
-  @Delete('delete/:userId')
-  @UseGuards(AuthGuard('jwt'))
-  public async deleteUser(@Param('userId') userId: number) {
-    let deletedUser = await this.userService.deleteUser(userId);
-    return ({msg: 'User has been deleted successfully' + deletedUser});
+          const {password, ...result} = user;
+
+          return result;
+      } catch (e) {
+          throw new UnauthorizedException();
+      }
   }
 
   @Post('logout')
-    async logout(@Res({passthrough: true}) response: Response) {
-        response.clearCookie('auth-cookie');
+  async logout(@Res({passthrough: true}) response: Response) {
+      response.clearCookie('jwt');
 
-        return {
-            message: 'User has been Logged out successfully'
-        }
-    }
+      return {
+          message: 'success'
+      }
+  }
 
 }

@@ -4,7 +4,7 @@
   "port": 3306,
   "username": "root",
   "password": "Server\"2021" ,
-  "database": "v2db",
+  "database": "staywo",
   "entities": ["dist/**/*.entity{.ts,.js}"],
   "synchronize": true
 }
